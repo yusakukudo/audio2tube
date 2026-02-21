@@ -94,15 +94,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     function getAdaptiveFPS(duration) {
         let fps;
         if (duration < 3600) {
-            fps = 0.8;
+            fps = 0.7;
         } else if (duration < 7200) {
-            fps = 0.4;
+            fps = 0.3;
         } else {
-            fps = 0.25;
+            fps = 0.2;
         }
         // Mobile cap
         if (isMobile) {
-            fps = Math.min(fps, 0.4); // Never above 0.4 on mobile
+            fps = Math.min(fps, 0.3); // Never above 0.4 on mobile
         }
         return fps;
     }
