@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>🎵➜🎬 Audio2Tube</title>
+
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Cross-origin isolation (required for ffmpeg.wasm threads) -->
+  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
+
+  <!-- FFmpeg WASM -->
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+</head>
+
+<body>
+  <div class="container">
+
+    <h1>🎧 Audio2Tube 🎥 </h1>
+    <p class="subtitle">
+      Turn your image + audio into a ready-to-upload YouTube video!
+    </p>
+
+    <div class="upload-card">
+
+      <div class="file-inputs">
+
+        <label class="file-label">
+          <span id="image-label-text">🖼 Upload Image</span>
+          <input type="file" id="image" accept="image/*" />
+        </label>
+        <p class="format-note">
+        Supported image formats: JPG, PNG, WebP
+        </p>
+        <label class="file-label">
+          <span id="audio-label-text">🎵 Upload Audio</span>
+          <input type="file" id="audio" accept="audio/*" />
+        </label>
+
+      </div>
+      <div class="quality-row">
+        <label for="resolution">Output Resolution:</label>
+        <select id="resolution">
+          <option value="1280">720p (Fastest)</option>
+          <option value="1920">1080p (Balanced)</option>
+        </select>
+      </div>
+      <button id="convert">🚀 Convert</button>
+      <button id="cancelBtn" class="cancel-btn">
+        ⛔ Cancel
+      </button>
+
+      <div id="progress-box">
+        <div id="progress-bar"></div>
+      </div>
+
+      <div id="status"></div>
+
+    </div>
+
+    <!-- OUTPUT SECTION -->
+    <div id="output">
+
+      <video id="preview" controls style="display:none;"></video>
+
+      <!-- New Save Button -->
+      <button id="saveBtn" class="download-btn" style="display:none;">
+        💾 Save Video
+      </button>
+
+    </div>
+
+    <footer>
+      <button id="contribute">💖 Contribute</button>
+      <p>Made with ❤️</p>
+    </footer>
+
+  </div>
+
+  <!-- Load your script LAST -->
+  <script src="script.js"></script>
+
+</body>
+</html>
