@@ -13,7 +13,7 @@
   <!-- FFmpeg WASM -->
   <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
 </head>
-
+<div id="drop-overlay">📂 Drop files anywhere</div>
 <body>
   <div class="container">
 
@@ -23,10 +23,11 @@
     </p>
 
     <div class="upload-card">
-
-      <div class="file-inputs" id="drop-zone">
-        
-        <p class="drop-text">📂 Drag & drop image or audio here</p>
+      <p class="drag-hint">
+        📂 Drag & drop your audio or image anywhere on the page
+        <span class="drag-sub">(or use the upload buttons below)</span>
+      </p>
+      <div class="file-inputs">
 
         <label class="file-label">
           <span id="image-label-text">🖼 Upload Image</span>
@@ -85,5 +86,6 @@
   <script src="script.js"></script>
   <script defer src="/_vercel/insights/script.js"></script>
 
+  <div id="drop-overlay">📂 Drop files anywhere</div>
 </body>
 </html>

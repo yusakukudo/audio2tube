@@ -50,33 +50,45 @@ document.addEventListener("DOMContentLoaded", async () => {
     const MOBILE_MAX_DURATION = 60 * 60 * 3;      // 1 hour
     const MOBILE_MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
 
-    const dropZone = document.getElementById("drop-zone");
-    // Drag & Drop support
-    dropZone.addEventListener("dragover", (e) => {
+    const dropOverlay = document.getElementById("drop-overlay");
+
+    window.addEventListener("dragover", (e) => {
         e.preventDefault();
-        dropZone.classList.add("dragover");
+        dropOverlay.style.display = "flex";
     });
 
-    dropZone.addEventListener("dragleave", () => {
-        dropZone.classList.remove("dragover");
+    window.addEventListener("dragleave", (e) => {
+        if (e.clientX === 0 && e.clientY === 0) {
+            dropOverlay.style.display = "none";
+        }
     });
 
-    dropZone.addEventListener("drop", (e) => {
+    window.addEventListener("drop", (e) => {
         e.preventDefault();
-        dropZone.classList.remove("dragover");
+        dropOverlay.style.display = "none";
 
         const files = e.dataTransfer.files;
 
         for (const file of files) {
+
             if (file.type.startsWith("audio")) {
-                audioInput.files = e.dataTransfer.files;
-                document.getElementById("audio-label-text").innerText = "🎵 " + file.name;
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                audioInput.files = dt.files;
+
+                document.getElementById("audio-label-text").innerText =
+                    "🎵 " + file.name;
             }
 
             if (file.type.startsWith("image")) {
-                imageInput.files = e.dataTransfer.files;
-                document.getElementById("image-label-text").innerText = "🖼 " + file.name;
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                imageInput.files = dt.files;
+
+                document.getElementById("image-label-text").innerText =
+                    "🖼 " + file.name;
             }
+
         }
     });
 
