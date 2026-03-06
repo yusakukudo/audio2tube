@@ -75,6 +75,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         cancelBtn.style.display = "none";
         convertBtn.disabled = false;
         isProcessing = false;
+
+        document.getElementById("progress-box").style.display = "none";
     }
 
     async function getAudioDuration(file) {
@@ -138,6 +140,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         isProcessing = true;
         convertBtn.disabled = true;
         cancelBtn.style.display = "inline-block";
+
+        document.getElementById("progress-box").style.display = "block";
+
         saveBtn.style.display = "none";
         progressBar.style.width = "0%";
         status.innerText = "Loading...";
