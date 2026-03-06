@@ -159,3 +159,20 @@ footer {
   color: #888;
   margin-top: 8px;
 }
+#drop-zone {
+  border: 2px dashed #ccc;
+  padding: 15px;
+  border-radius: 8px;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+#drop-zone.dragover {
+  border-color: #4CAF50;
+  background: #f6fff6;
+}
+
+.drop-text {
+  font-size: 14px;
+  color: #777;
+  margin-bottom: 10px;
+}

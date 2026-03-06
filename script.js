@@ -50,6 +50,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     const MOBILE_MAX_DURATION = 60 * 60 * 3;      // 1 hour
     const MOBILE_MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
 
+    const dropZone = document.getElementById("drop-zone");
+    // Drag & Drop support
+    dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("dragover");
+    });
+
+    dropZone.addEventListener("dragleave", () => {
+        dropZone.classList.remove("dragover");
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("dragover");
+
+        const files = e.dataTransfer.files;
+
+        for (const file of files) {
+            if (file.type.startsWith("audio")) {
+                audioInput.files = e.dataTransfer.files;
+                document.getElementById("audio-label-text").innerText = "🎵 " + file.name;
+            }
+
+            if (file.type.startsWith("image")) {
+                imageInput.files = e.dataTransfer.files;
+                document.getElementById("image-label-text").innerText = "🖼 " + file.name;
+            }
+        }
+    });
 
     imageInput.addEventListener("change", () => {
         if (imageInput.files && imageInput.files[0]) {
