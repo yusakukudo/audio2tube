@@ -1,5 +1,15 @@
 document.addEventListener("DOMContentLoaded", async () => {
-
+    // Track visit and display count
+    if (!localStorage.getItem("visited")) {
+    fetch("/api/visit", { method: "POST" })
+        .then(res => res.json())
+        .then(data => {
+            const el = document.getElementById("visit-count");
+            if (el) el.textContent = data.visits;
+        });
+    localStorage.setItem("visited","true");
+    }
+    
     if (typeof FFmpeg === "undefined") {
         alert("FFmpeg failed to load.");
         return;
