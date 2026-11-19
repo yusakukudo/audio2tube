@@ -247,10 +247,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             ffmpeg.FS("writeFile", imageName, await fetchFile(cover));
             signal.throwIfAborted();
 
-            const canCopyAudio = ["mp3", "aac", "m4a"].includes(audioExt);
-            const audioCodecArgs = canCopyAudio
-                ? ["-c:a", "copy"]
-                : ["-c:a", "aac", "-b:a", "96k"];
             await ffmpeg.run(
                 "-threads", "1",
                 "-loop", "1",
@@ -264,7 +260,8 @@ document.addEventListener("DOMContentLoaded", async () => {
                 "-preset", "ultrafast",
                 "-crf", "30",
                 "-tune", "stillimage",
-                ...audioCodecArgs,
+                "-c:a", "aac", "-profile:a", "aac_low",
+                "-ar", "48000", "-ac", "2", "-b:a", "192k",
                 "-t", String(Math.ceil(audioDuration * adaptiveFPS) / adaptiveFPS),
                 "-pix_fmt", "yuv420p",
                 "-g", "999999",

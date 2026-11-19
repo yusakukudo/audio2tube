@@ -15,7 +15,7 @@ https://audio2tube.vercel.app/
 *  Fully client-side encoding (powered by FFmpeg.wasm)
 *  100% private — files never leave your device
 *  Adaptive FPS for long audio (optimized performance)
-*  Automatic audio stream copy (when possible)
+*  AAC stereo audio in every MP4
 *  720p or 1080p output with the cover centered in the frame
 *  Mobile-safe restrictions
 *  Live progress bar + ETA estimation
@@ -31,7 +31,6 @@ Audio2Tube runs **FFmpeg compiled to WebAssembly** directly inside the browser.
 
 * Large GOP for static images
 * Adaptive frame rate (0.2–0.7 FPS)
-* Conditional audio copying (`-c:a copy`)
 * 720p output on mobile
 * Mobile memory protection
 
