@@ -1,11 +1,4 @@
 document.addEventListener("DOMContentLoaded", async () => {
-    if (typeof FFmpeg === "undefined") {
-        alert("FFmpeg failed to load.");
-        return;
-    }
-
-    const { createFFmpeg, fetchFile } = FFmpeg;
-
     let activeJob;
     let generatedVideoData;
     let fileName;
@@ -18,7 +11,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const progressBar = document.getElementById("progress-bar");
     const status = document.getElementById("status");
     const resolutionSelect = document.getElementById("resolution");
-    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isMobile = (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     const MOBILE_MAX_DURATION = 60 * 60 * 3;      // 3 hours
     const MOBILE_MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
 
@@ -31,7 +24,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     window.addEventListener("dragover", (e) => {
         e.preventDefault();
-        if (e.dataTransfer.types.includes("Files")) dropOverlay.style.display = "flex";
+        if (!activeJob && e.dataTransfer.types.includes("Files")) dropOverlay.style.display = "flex";
     });
 
     window.addEventListener("dragleave", (e) => {
@@ -45,35 +38,42 @@ document.addEventListener("DOMContentLoaded", async () => {
         dropOverlay.style.display = "none";
 
         if (activeJob) return;
-        const files = e.dataTransfer.files;
-
-        for (const file of files) {
-
-            if (file.type.startsWith("audio/") || /\.(mp3|m4a|aac|wav)$/i.test(file.name)) {
-                const dt = new DataTransfer();
-                dt.items.add(file);
-                audioInput.files = dt.files;
-
-                document.getElementById("audio-label-text").innerText =
-                    "🎵 " + file.name;
+        const selections = new Map();
+        for (const file of e.dataTransfer.files) {
+            let input;
+            if (file.type.startsWith("audio/") || /\.(mp3|m4a|aac|wav)$/i.test(file.name)) input = audioInput;
+            else if (file.type.startsWith("image/") || /\.(jpe?g|png|webp)$/i.test(file.name)) input = imageInput;
+            else {
+                status.textContent = "Choose an audio file and, optionally, a JPG, PNG or WebP cover.";
+                return;
             }
-
-            if (file.type.startsWith("image/") || /\.(jpe?g|png|webp)$/i.test(file.name)) {
-                const dt = new DataTransfer();
-                dt.items.add(file);
-                imageInput.files = dt.files;
-
-                imageInput.dispatchEvent(new Event("change"));
+            if (selections.has(input)) {
+                status.textContent = "Drop one audio file and one cover at a time.";
+                return;
             }
-
+            selections.set(input, file);
+        }
+        for (const [input, file] of selections) {
+            const transfer = new DataTransfer();
+            transfer.items.add(file);
+            input.files = transfer.files;
+            input.dispatchEvent(new Event("change"));
         }
     });
 
+    const clearCover = document.getElementById("clear-cover");
+    clearCover.addEventListener("click", () => {
+        imageInput.value = "";
+        imageInput.dispatchEvent(new Event("change"));
+        imageInput.focus();
+    });
     const preview = document.getElementById("cover-preview");
     let previewUrl;
     preview.onload = () => { preview.hidden = false; };
     preview.onerror = () => { preview.hidden = true; };
     imageInput.addEventListener("change", () => {
+        clearCover.hidden = !imageInput.files.length;
+        status.textContent = "";
         preview.hidden = true;
         preview.removeAttribute("src");
         if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -82,7 +82,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             previewUrl = URL.createObjectURL(imageInput.files[0]);
             preview.src = previewUrl;
             document.getElementById("image-label-text").innerText =
-                "🖼 " + imageInput.files[0].name;
+                imageInput.files[0].name;
         } else {
             document.getElementById("image-label-text").innerText =
                 "Choose cover (optional)";
@@ -90,9 +90,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     audioInput.addEventListener("change", () => {
+        status.textContent = "";
         if (audioInput.files && audioInput.files[0]) {
             document.getElementById("audio-label-text").innerText =
-                "🎵 " + audioInput.files[0].name;
+                audioInput.files[0].name;
         } else {
             document.getElementById("audio-label-text").innerText =
                 "Choose audio";
@@ -100,6 +101,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     function showBusy(busy) {
         convertBtn.disabled = busy;
+        clearCover.disabled = busy;
         imageInput.disabled = busy;
         audioInput.disabled = busy;
         resolutionSelect.disabled = busy;
@@ -131,6 +133,32 @@ document.addEventListener("DOMContentLoaded", async () => {
             audio.removeAttribute("src");
             audio.load();
             URL.revokeObjectURL(url);
+        }
+    }
+
+    async function prepareCover(file, width, height) {
+        const img = new Image();
+        const url = file ? URL.createObjectURL(file) : "default.png";
+        try {
+            img.src = url;
+            await img.decode();
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, width, height);
+            const scale = Math.min(width / img.naturalWidth, height / img.naturalHeight);
+            const w = img.naturalWidth * scale;
+            const h = img.naturalHeight * scale;
+            ctx.drawImage(img, (width - w) / 2, (height - h) / 2, w, h);
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+            if (!blob) throw new Error();
+            return blob;
+        } catch {
+            throw new Error(file ? "Could not read the cover. Choose another image or remove it." : "Could not load the default cover.");
+        } finally {
+            if (file) URL.revokeObjectURL(url);
         }
     }
 
@@ -179,12 +207,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         const width = isMobile ? 1280 : Number(resolutionSelect.value);
         const height = width * 9 / 16;
         try {
+            if (!window.FFmpeg) throw new Error("The video encoder could not load. Check your connection and reload the page.");
+            const { createFFmpeg, fetchFile } = window.FFmpeg;
             status.textContent = "Reading audio…";
             if (imageFile && /\.hei[cf]$/i.test(imageFile.name)) throw new Error("Please convert the image to JPG or PNG first.");
             if (isMobile && audioFile.size > MOBILE_MAX_FILE_SIZE) throw new Error("Audio exceeds the 200 MB mobile limit.");
             const audioDuration = await getAudioDuration(audioFile, signal);
             signal.throwIfAborted();
             if (isMobile && audioDuration > MOBILE_MAX_DURATION) throw new Error("Audio exceeds the 3 hour mobile limit.");
+            status.textContent = "Preparing cover…";
+            const cover = await prepareCover(imageFile, width, height);
+            signal.throwIfAborted();
             status.textContent = "Loading encoder…";
             ffmpeg = createFFmpeg({
                 log: true,
@@ -192,8 +225,11 @@ document.addEventListener("DOMContentLoaded", async () => {
             });
             await ffmpeg.load();
             signal.throwIfAborted();
-            const adaptiveFPS = getAdaptiveFPS(audioDuration);
-            status.innerText = `Using ${adaptiveFPS} FPS for optimized encoding...`;
+            // Spread a whole number of still frames across the track so the final
+            // frame ends with the audio, including tracks shorter than one frame.
+            const frameCount = Math.max(1, Math.ceil(audioDuration * getAdaptiveFPS(audioDuration)));
+            const frameRate = (frameCount / audioDuration).toFixed(8);
+            status.textContent = "Creating video…";
 
             ffmpeg.setLogger(({ type, message }) => {
                 if (!signal.aborted && type === "fferr") {
@@ -233,30 +269,25 @@ document.addEventListener("DOMContentLoaded", async () => {
             ffmpeg.FS("writeFile", audioName, await fetchFile(audioFile));
 
             signal.throwIfAborted();
-            const imageName = "cover";
-            const cover = imageFile || await fetch("default.png", { signal }).then(response => {
-                if (!response.ok) throw new Error("Could not load the default cover.");
-                return response.blob();
-            });
+            const imageName = "cover.png";
             ffmpeg.FS("writeFile", imageName, await fetchFile(cover));
             signal.throwIfAborted();
 
             await ffmpeg.run(
                 "-threads", "1",
                 "-loop", "1",
-                "-framerate", adaptiveFPS.toString(),
+                "-framerate", frameRate,
                 "-i", imageName,
                 "-i", audioName,
-                "-r", adaptiveFPS.toString(),  // force output fps
+                "-r", frameRate,  // force output fps
                 "-map", "0:v:0", "-map", "1:a:0",
-                "-vf", `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1`,
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-crf", "30",
                 "-tune", "stillimage",
                 "-c:a", "aac", "-profile:a", "aac_low",
                 "-ar", "48000", "-ac", "2", "-b:a", "192k",
-                "-t", String(Math.ceil(audioDuration * adaptiveFPS) / adaptiveFPS),
+                "-t", String(audioDuration),
                 "-pix_fmt", "yuv420p",
                 "-g", "999999",
                 "output.mp4"
@@ -269,7 +300,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             generatedVideoData = result;
             fileName = audioFile.name.replace(/\.[^/.]+$/, "") + "_video.mp4";
             saveBtn.textContent = "Save " + fileName;
-            window.recordConversion();
+            window.recordConversion?.();
             progressBar.style.width = "100%";
             status.innerText = "Conversion complete!";
             saveBtn.style.display = "inline-block";
