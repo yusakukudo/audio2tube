@@ -1,26 +1,17 @@
 document.addEventListener("DOMContentLoaded", async () => {
-    // Track visit and display count
-    if (!localStorage.getItem("visited")) {
-
-    fetch("/api/visit", { method: "POST" })
-        .then(res => res.json())
-        .then(data => {
-            const el = document.getElementById("visit-count");
-            if (el) el.textContent = data.visits;
-        });
-
-    localStorage.setItem("visited", "true");
-
-    } else {
-
-    fetch("/api/visit")
-        .then(res => res.json())
-        .then(data => {
-            const el = document.getElementById("visit-count");
-            if (el) el.textContent = data.visits;
-        });
-
+    async function updateCount(method) {
+        try {
+            const response = await fetch("/api/conversions", { method, cache: "no-store" });
+            if (!response.ok) return;
+            const { conversions } = await response.json();
+            if (!Number.isSafeInteger(conversions) || conversions < 0) return;
+            const count = document.getElementById("conversion-count");
+            count.textContent = Math.max(Number(count.dataset.total || 0), conversions).toLocaleString();
+            count.dataset.total = Math.max(Number(count.dataset.total || 0), conversions);
+            document.getElementById("conversion-total").hidden = false;
+        } catch { /* The optional counter must never interrupt conversion. */ }
     }
+    updateCount("GET");
 
     if (typeof FFmpeg === "undefined") {
         alert("FFmpeg failed to load.");
@@ -29,14 +20,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const { createFFmpeg, fetchFile } = FFmpeg;
 
-    let ffmpeg = createFFmpeg({
-        log: true,
-        corePath: "https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js",
-    });
-
-    let generatedVideoData = null;
-    let isProcessing = false;
-    let audioDuration = 0;
+    let activeJob;
+    let generatedVideoData;
+    let fileName;
 
     const imageInput = document.getElementById("image");
     const audioInput = document.getElementById("audio");
@@ -47,18 +33,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     const status = document.getElementById("status");
     const resolutionSelect = document.getElementById("resolution");
     const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const MOBILE_MAX_DURATION = 60 * 60 * 3;      // 1 hour
+    const MOBILE_MAX_DURATION = 60 * 60 * 3;      // 3 hours
     const MOBILE_MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
 
     const dropOverlay = document.getElementById("drop-overlay");
 
     window.addEventListener("dragover", (e) => {
         e.preventDefault();
-        dropOverlay.style.display = "flex";
+        if (e.dataTransfer.types.includes("Files")) dropOverlay.style.display = "flex";
     });
 
     window.addEventListener("dragleave", (e) => {
-        if (e.clientX === 0 && e.clientY === 0) {
+        if (!e.relatedTarget) {
             dropOverlay.style.display = "none";
         }
     });
@@ -85,20 +71,29 @@ document.addEventListener("DOMContentLoaded", async () => {
                 dt.items.add(file);
                 imageInput.files = dt.files;
 
-                document.getElementById("image-label-text").innerText =
-                    "🖼 " + file.name;
+                imageInput.dispatchEvent(new Event("change"));
             }
 
         }
     });
 
+    const preview = document.getElementById("cover-preview");
+    let previewUrl;
+    preview.onload = () => { preview.hidden = false; };
+    preview.onerror = () => { preview.hidden = true; };
     imageInput.addEventListener("change", () => {
+        preview.hidden = true;
+        preview.removeAttribute("src");
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        previewUrl = null;
         if (imageInput.files && imageInput.files[0]) {
+            previewUrl = URL.createObjectURL(imageInput.files[0]);
+            preview.src = previewUrl;
             document.getElementById("image-label-text").innerText =
                 "🖼 " + imageInput.files[0].name;
         } else {
             document.getElementById("image-label-text").innerText =
-                "🖼 Upload Image";
+                "🖼 Choose cover (optional)";
         }
     });
 
@@ -108,24 +103,40 @@ document.addEventListener("DOMContentLoaded", async () => {
                 "🎵 " + audioInput.files[0].name;
         } else {
             document.getElementById("audio-label-text").innerText =
-                "🎵 Upload Audio";
+                "🎵 Choose audio";
         }
     });
-    function resetUI() {
-        progressBar.style.width = "0%";
-        cancelBtn.style.display = "none";
-        convertBtn.disabled = false;
-        isProcessing = false;
-
-        document.getElementById("progress-box").style.display = "none";
+    function showBusy(busy) {
+        convertBtn.disabled = busy;
+        cancelBtn.style.display = busy ? "inline-block" : "none";
+        document.getElementById("progress-box").style.display = busy ? "block" : "none";
     }
 
-    async function getAudioDuration(file) {
-        return new Promise(resolve => {
-            const audio = document.createElement("audio");
-            audio.src = URL.createObjectURL(file);
-            audio.onloadedmetadata = () => resolve(audio.duration);
-        });
+    async function getAudioDuration(file, signal) {
+        const url = URL.createObjectURL(file);
+        const audio = document.createElement("audio");
+        let timer;
+        let cancel;
+        try {
+            return await new Promise((resolve, reject) => {
+                cancel = () => reject(new Error("Canceled."));
+                signal.addEventListener("abort", cancel);
+                audio.onerror = () => reject(new Error("Could not read this audio file."));
+                timer = setTimeout(audio.onerror, 30000);
+                audio.onloadedmetadata = () => {
+                    if (Number.isFinite(audio.duration) && audio.duration > 0) resolve(audio.duration);
+                    else audio.onerror();
+                };
+                audio.src = url;
+            });
+        } finally {
+            clearTimeout(timer);
+            signal.removeEventListener("abort", cancel);
+            audio.onerror = audio.onloadedmetadata = null;
+            audio.removeAttribute("src");
+            audio.load();
+            URL.revokeObjectURL(url);
+        }
     }
 
     function formatTime(sec) {
@@ -137,25 +148,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         return `${m}m ${s}s`;
     }
 
-    async function resizeImage(file, maxWidth) {
-        return new Promise(resolve => {
-            const img = new Image();
-            img.src = URL.createObjectURL(file);
-
-            img.onload = () => {
-                const scale = Math.min(1, maxWidth / img.width);
-
-                const canvas = document.createElement("canvas");
-                canvas.width = img.width * scale;
-                canvas.height = img.height * scale;
-
-                const ctx = canvas.getContext("2d");
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                canvas.toBlob(blob => resolve(blob), "image/jpeg", 0.85);
-            };
-        });
-    }
     function getAdaptiveFPS(duration) {
         let fps;
         if (duration < 3600) {
@@ -176,119 +168,89 @@ document.addEventListener("DOMContentLoaded", async () => {
         const audioFile = audioInput.files[0];
         const imageFile = imageInput.files[0];
 
-        if (!audioFile || isProcessing) return;
+        if (activeJob) return;
+        if (!audioFile) {
+            status.textContent = "Choose an audio file to convert.";
+            return;
+        }
 
-        isProcessing = true;
-        convertBtn.disabled = true;
-        cancelBtn.style.display = "inline-block";
-
-        document.getElementById("progress-box").style.display = "block";
-
+        const controller = new AbortController();
+        const signal = controller.signal;
+        let ffmpeg;
+        activeJob = { controller, stopEncoder() { if (ffmpeg?.isLoaded()) ffmpeg.exit(); } };
+        showBusy(true);
+        generatedVideoData = null;
         saveBtn.style.display = "none";
         progressBar.style.width = "0%";
-        status.innerText = "Loading...";
-
-        if (imageFile) {
-
-            const imageExt = imageFile.name.split(".").pop().toLowerCase();
-
-            if (imageExt === "heic" || imageExt === "heif") {
-
-                status.innerText = "HEIC format is not supported.";
-
-                alert(
-                    "HEIC / HEIF images are not supported.\n\n" +
-                    "Please convert the image to JPG or PNG before uploading.\n\n" +
-                    "Tip (iPhone): Settings → Camera → Formats → Select 'Most Compatible'."
-                );
-
-                resetUI();
-                return;
-            }
-        }
-        if (!ffmpeg.isLoaded()) {
-            await ffmpeg.load();
-        }
-
-        audioDuration = await getAudioDuration(audioFile);
-        if (isMobile) {
-
-            if (audioDuration > MOBILE_MAX_DURATION) {
-                const maxHours = MOBILE_MAX_DURATION / 3600;
-                alert(`On mobile devices, maximum supported duration is ${maxHours} hour.`);
-                resetUI();
-                return;
-            }
-
-            if (audioFile.size > MOBILE_MAX_FILE_SIZE) {
-                alert("Audio file too large for mobile device.");
-                resetUI();
-                return;
-            }
-
-            // Force 720p on mobile
-            resolutionSelect.value = "1280";
-
-            status.innerText = "Mobile mode: Optimized for stability.";
-        }
-        const adaptiveFPS = getAdaptiveFPS(audioDuration);
-        status.innerText = `Using ${adaptiveFPS} FPS for optimized encoding...`;
-
-        ffmpeg.setLogger(({ type, message }) => {
-            if (type === "fferr") {
-                const timeMatch = message.match(/time=([0-9:.]+)/);
-                const speedMatch = message.match(/speed=\s*([0-9.]+)x/);
-
-                if (timeMatch) {
-                    const parts = timeMatch[1].split(":");
-                    const seconds =
-                        parseInt(parts[0]) * 3600 +
-                        parseInt(parts[1]) * 60 +
-                        parseFloat(parts[2]);
-
-                    const percent = Math.min(
-                        100,
-                        (seconds / audioDuration) * 100
-                    );
-
-                    progressBar.style.width = percent.toFixed(1) + "%";
-
-                    let etaText = "";
-                    if (speedMatch) {
-                        const speed = parseFloat(speedMatch[1]);
-                        const remaining = audioDuration - seconds;
-                        const eta = remaining / speed;
-                        etaText = " | ETA: " + formatTime(eta);
-                    }
-
-                    status.innerText =
-                        `Processing... ${percent.toFixed(1)}%${etaText}`;
-                }
-            }
-        });
-
-        const audioExt = audioFile.name.split(".").pop().toLowerCase();
-        const audioName = "input." + audioExt;
-        ffmpeg.FS("writeFile", audioName, await fetchFile(audioFile));
-
-        const selectedWidth = parseInt(resolutionSelect.value);
-        let imageName = "image.jpg";
-
-        if (imageFile) {
-            status.innerText = "Optimizing image...";
-            const resizedBlob = await resizeImage(imageFile, selectedWidth);
-            ffmpeg.FS("writeFile", imageName, await fetchFile(resizedBlob));
-        } else {
-            const response = await fetch("default.png");
-            const buffer = await response.arrayBuffer();
-            ffmpeg.FS("writeFile", imageName, new Uint8Array(buffer));
-        }
-        
-        const canCopyAudio = ["mp3", "aac", "m4a"].includes(audioExt);
-        const audioCodecArgs = canCopyAudio
-            ? ["-c:a", "copy"]
-            : ["-c:a", "aac", "-b:a", "96k"];
+        const width = isMobile ? 1280 : Number(resolutionSelect.value);
+        const height = width * 9 / 16;
         try {
+            status.textContent = "Reading audio…";
+            if (imageFile && /\.hei[cf]$/i.test(imageFile.name)) throw new Error("Please convert the image to JPG or PNG first.");
+            if (isMobile && audioFile.size > MOBILE_MAX_FILE_SIZE) throw new Error("Audio exceeds the 200 MB mobile limit.");
+            const audioDuration = await getAudioDuration(audioFile, signal);
+            signal.throwIfAborted();
+            if (isMobile && audioDuration > MOBILE_MAX_DURATION) throw new Error("Audio exceeds the 3 hour mobile limit.");
+            status.textContent = "Loading encoder…";
+            ffmpeg = createFFmpeg({
+                log: true,
+                corePath: "https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js",
+            });
+            await ffmpeg.load();
+            signal.throwIfAborted();
+            const adaptiveFPS = getAdaptiveFPS(audioDuration);
+            status.innerText = `Using ${adaptiveFPS} FPS for optimized encoding...`;
+
+            ffmpeg.setLogger(({ type, message }) => {
+                if (!signal.aborted && type === "fferr") {
+                    const timeMatch = message.match(/time=([0-9:.]+)/);
+                    const speedMatch = message.match(/speed=\s*([0-9.]+)x/);
+
+                    if (timeMatch) {
+                        const parts = timeMatch[1].split(":");
+                        const seconds =
+                            parseInt(parts[0]) * 3600 +
+                            parseInt(parts[1]) * 60 +
+                            parseFloat(parts[2]);
+
+                        const percent = Math.min(
+                            100,
+                            (seconds / audioDuration) * 100
+                        );
+
+                        progressBar.style.width = percent.toFixed(1) + "%";
+
+                        let etaText = "";
+                        if (speedMatch && Number(speedMatch[1]) > 0) {
+                            const speed = parseFloat(speedMatch[1]);
+                            const remaining = audioDuration - seconds;
+                            const eta = remaining / speed;
+                            etaText = " | ETA: " + formatTime(eta);
+                        }
+
+                        status.innerText =
+                            `Processing... ${percent.toFixed(1)}%${etaText}`;
+                    }
+                }
+            });
+
+            const audioExt = audioFile.name.split(".").pop().toLowerCase();
+            const audioName = "input." + audioExt;
+            ffmpeg.FS("writeFile", audioName, await fetchFile(audioFile));
+
+            signal.throwIfAborted();
+            const imageName = "cover";
+            const cover = imageFile || await fetch("default.png", { signal }).then(response => {
+                if (!response.ok) throw new Error("Could not load the default cover.");
+                return response.blob();
+            });
+            ffmpeg.FS("writeFile", imageName, await fetchFile(cover));
+            signal.throwIfAborted();
+
+            const canCopyAudio = ["mp3", "aac", "m4a"].includes(audioExt);
+            const audioCodecArgs = canCopyAudio
+                ? ["-c:a", "copy"]
+                : ["-c:a", "aac", "-b:a", "96k"];
             await ffmpeg.run(
                 "-threads", "1",
                 "-loop", "1",
@@ -296,92 +258,85 @@ document.addEventListener("DOMContentLoaded", async () => {
                 "-i", imageName,
                 "-i", audioName,
                 "-r", adaptiveFPS.toString(),  // force output fps
-                "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-vf", `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1`,
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-crf", "30",
                 "-tune", "stillimage",
-                "-c:a", "aac",
-                "-b:a", "96k",
+                ...audioCodecArgs,
+                "-t", String(Math.ceil(audioDuration * adaptiveFPS) / adaptiveFPS),
                 "-pix_fmt", "yuv420p",
-                "-shortest",
                 "-g", "999999",
                 "output.mp4"
             );
 
+            signal.throwIfAborted();
             generatedVideoData = ffmpeg.FS("readFile", "output.mp4");
 
+            if (!generatedVideoData.length) throw new Error("The encoder produced an empty video.");
+            fileName = audioFile.name.replace(/\.[^/.]+$/, "") + "_video.mp4";
+            updateCount("POST");
             progressBar.style.width = "100%";
             status.innerText = "Conversion complete!";
             saveBtn.style.display = "inline-block";
 
-        } catch {
-            status.innerText = "Processing canceled.";
+        } catch (error) {
+            if (!signal.aborted) status.textContent = error.message || "Conversion failed. Check the audio and image files.";
+        } finally {
+            if (ffmpeg?.isLoaded()) ffmpeg.exit();
+            if (!signal.aborted) {
+                activeJob = null;
+                showBusy(false);
+            }
         }
-
-        try {
-            ffmpeg.FS("unlink", audioName);
-            ffmpeg.FS("unlink", imageName);
-            ffmpeg.FS("unlink", "output.mp4");
-        } catch {}
-
-        resetUI();
     });
 
-    cancelBtn.addEventListener("click", async () => {
-        if (!isProcessing) return;
-        status.innerText = "Canceling...";
-
-        try { await ffmpeg.exit(); } catch {}
-
-        ffmpeg = createFFmpeg({
-            log: true,
-            corePath: "https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js",
-        });
-
-        resetUI();
-        status.innerText = "Canceled.";
+    cancelBtn.addEventListener("click", () => {
+        if (!activeJob) return;
+        activeJob.controller.abort();
+        activeJob.stopEncoder();
+        activeJob = null;
+        showBusy(false);
+        status.textContent = "Canceled.";
     });
 
     saveBtn.addEventListener("click", async () => {
-        if (!generatedVideoData) return;
+        const video = generatedVideoData;
+        if (!video) return;
+        try {
+            // Modern Chrome
+            if ("showSaveFilePicker" in window) {
 
-        const audioFile = audioInput.files[0];
-        const base = audioFile
-            ? audioFile.name.replace(/\.[^/.]+$/, "")
-            : "audio2tube";
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: fileName,
+                    types: [{
+                        description: "MP4 Video",
+                        accept: { "video/mp4": [".mp4"] }
+                    }]
+                });
 
-        const fileName = base + "_video.mp4";
+                const writable = await handle.createWritable();
+                await writable.write(video);
+                await writable.close();
 
-        // Modern Chrome
-        if ("showSaveFilePicker" in window) {
+            } else {
+                // Fallback for Safari / Firefox / unsupported browsers
+                const blob = new Blob([video], {
+                    type: "video/mp4"
+                });
 
-            const handle = await window.showSaveFilePicker({
-                suggestedName: fileName,
-                types: [{
-                    description: "MP4 Video",
-                    accept: { "video/mp4": [".mp4"] }
-                }]
-            });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
 
-            const writable = await handle.createWritable();
-            await writable.write(generatedVideoData);
-            await writable.close();
-
-        } else {
-            // Fallback for Safari / Firefox / unsupported browsers
-            const blob = new Blob([generatedVideoData.buffer], {
-                type: "video/mp4"
-            });
-
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = fileName;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            URL.revokeObjectURL(link.href);
+                setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+            }
+        } catch (error) {
+            if (error.name !== "AbortError") status.textContent = "Could not save the video. Try saving again.";
         }
     });
 

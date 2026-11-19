@@ -62,8 +62,12 @@ h1 {
   font-size: 1rem;
 }
 
+.file-label:focus-within { outline: 2px solid currentColor; }
 .file-label input {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
 }
 
 button {
@@ -212,4 +216,11 @@ footer {
   font-size: 12px;
   color: #999;
   margin-top: 2px;
+}
+
+#cover-preview {
+  max-width: 100%;
+  max-height: 140px;
+  align-self: center;
+  border-radius: 6px;
 }
