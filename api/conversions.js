@@ -7,7 +7,9 @@ export default async function handler(req, res) {
     return res.status(405).end();
   }
   try {
-    const redis = Redis.fromEnv();
+    const redis = process.env.COUNTER_KV_REST_API_URL
+      ? new Redis({ url: process.env.COUNTER_KV_REST_API_URL, token: process.env.COUNTER_KV_REST_API_TOKEN })
+      : Redis.fromEnv();
     const conversions = req.method === "POST"
       ? await redis.incr("conversions")
       : Number(await redis.get("conversions") || 0);

@@ -93,7 +93,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 "🖼 " + imageInput.files[0].name;
         } else {
             document.getElementById("image-label-text").innerText =
-                "🖼 Choose cover (optional)";
+                "Choose cover (optional)";
         }
     });
 
@@ -103,7 +103,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 "🎵 " + audioInput.files[0].name;
         } else {
             document.getElementById("audio-label-text").innerText =
-                "🎵 Choose audio";
+                "Choose audio";
         }
     });
     function showBusy(busy) {

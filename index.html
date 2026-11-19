@@ -17,40 +17,36 @@
 <body>
   <div class="container">
 
-    <h1>🎧 Audio2Tube 🎥 </h1>
+    <h1>Audio<span>2Tube</span> </h1>
     <p class="subtitle">
-      Turn your image + audio into a ready-to-upload YouTube video!
+      Turn an audio track and cover image into a YouTube-ready video.
     </p>
 
     <div class="upload-card">
-      <p class="drag-hint">
-        📂 Drag & drop your audio or image anywhere on the page
-        <span class="drag-sub">(or use the upload buttons below)</span>
-      </p>
+      <p class="drag-hint">Choose your files or drop them anywhere on this page.</p>
       <div class="file-inputs">
-
         <label class="file-label">
-          <span id="image-label-text">🖼 Choose cover (optional)</span>
-          <input type="file" id="image" accept="image/*" />
-        </label>
-        <img id="cover-preview" alt="Selected cover" hidden />
-        <p class="format-note">
-        Supported image formats: JPG, PNG, WebP
-        </p>
-        <label class="file-label">
-          <span id="audio-label-text">🎵 Choose audio</span>
+          <span class="file-icon" aria-hidden="true">♫</span>
+          <strong id="audio-label-text">Choose audio</strong>
+          <small>MP3, M4A, AAC or WAV</small>
           <input type="file" id="audio" accept="audio/*" />
         </label>
-
+        <label class="file-label">
+          <span class="file-icon" aria-hidden="true">▧</span>
+          <strong id="image-label-text">Choose cover (optional)</strong>
+          <small>JPG, PNG or WebP</small>
+          <input type="file" id="image" accept="image/*" />
+        </label>
       </div>
+      <img id="cover-preview" alt="Selected cover" hidden />
       <div class="quality-row">
-        <label for="resolution">Output Resolution:</label>
+        <label for="resolution">Video resolution</label>
         <select id="resolution">
           <option value="1280">720p (Fastest)</option>
           <option value="1920">1080p (Balanced)</option>
         </select>
       </div>
-      <button id="convert">🚀 Convert</button>
+      <button id="convert">Convert to MP4</button>
       <button id="cancelBtn" class="cancel-btn">
         ⛔ Cancel
       </button>
