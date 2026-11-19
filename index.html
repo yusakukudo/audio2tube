@@ -5,6 +5,7 @@
   <meta charset="UTF-8" />
   <title>Audio2Tube</title>
 
+  <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
   <link rel="stylesheet" href="style.css" />
 
   <!-- Cross-origin isolation (required for ffmpeg.wasm threads) -->
@@ -73,13 +74,14 @@
 
     <footer>
       <!-- <button id="contribute">💖 Contribute</button> -->
-      <p id="conversion-total" hidden>🎬 <span id="conversion-count"></span> videos converted</p>
+      <p id="conversion-total" hidden>🎬 <span id="conversion-count"></span> videos converted <small id="count-sync" role="status"></small></p>
       <p>Made with ❤️</p>
     </footer>
 
   </div>
 
   <!-- Load your script LAST -->
+  <script src="counter.js"></script>
   <script src="script.js"></script>
   <script defer src="/_vercel/insights/script.js"></script>
 

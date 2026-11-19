@@ -1,18 +1,4 @@
 document.addEventListener("DOMContentLoaded", async () => {
-    async function updateCount(method) {
-        try {
-            const response = await fetch("/api/conversions", { method, cache: "no-store" });
-            if (!response.ok) return;
-            const { conversions } = await response.json();
-            if (!Number.isSafeInteger(conversions) || conversions < 0) return;
-            const count = document.getElementById("conversion-count");
-            count.textContent = Math.max(Number(count.dataset.total || 0), conversions).toLocaleString();
-            count.dataset.total = Math.max(Number(count.dataset.total || 0), conversions);
-            document.getElementById("conversion-total").hidden = false;
-        } catch { /* The optional counter must never interrupt conversion. */ }
-    }
-    updateCount("GET");
-
     if (typeof FFmpeg === "undefined") {
         alert("FFmpeg failed to load.");
         return;
@@ -36,6 +22,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     const MOBILE_MAX_DURATION = 60 * 60 * 3;      // 3 hours
     const MOBILE_MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
 
+    if (isMobile) {
+        resolutionSelect.value = "1280";
+        resolutionSelect.querySelector('[value="1920"]').disabled = true;
+    }
+
     const dropOverlay = document.getElementById("drop-overlay");
 
     window.addEventListener("dragover", (e) => {
@@ -53,11 +44,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         e.preventDefault();
         dropOverlay.style.display = "none";
 
+        if (activeJob) return;
         const files = e.dataTransfer.files;
 
         for (const file of files) {
 
-            if (file.type.startsWith("audio")) {
+            if (file.type.startsWith("audio/") || /\.(mp3|m4a|aac|wav)$/i.test(file.name)) {
                 const dt = new DataTransfer();
                 dt.items.add(file);
                 audioInput.files = dt.files;
@@ -66,7 +58,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     "🎵 " + file.name;
             }
 
-            if (file.type.startsWith("image")) {
+            if (file.type.startsWith("image/") || /\.(jpe?g|png|webp)$/i.test(file.name)) {
                 const dt = new DataTransfer();
                 dt.items.add(file);
                 imageInput.files = dt.files;
@@ -108,6 +100,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     function showBusy(busy) {
         convertBtn.disabled = busy;
+        imageInput.disabled = busy;
+        audioInput.disabled = busy;
+        resolutionSelect.disabled = busy;
         cancelBtn.style.display = busy ? "inline-block" : "none";
         document.getElementById("progress-box").style.display = busy ? "block" : "none";
     }
@@ -179,7 +174,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         let ffmpeg;
         activeJob = { controller, stopEncoder() { if (ffmpeg?.isLoaded()) ffmpeg.exit(); } };
         showBusy(true);
-        generatedVideoData = null;
         saveBtn.style.display = "none";
         progressBar.style.width = "0%";
         const width = isMobile ? 1280 : Number(resolutionSelect.value);
@@ -269,11 +263,13 @@ document.addEventListener("DOMContentLoaded", async () => {
             );
 
             signal.throwIfAborted();
-            generatedVideoData = ffmpeg.FS("readFile", "output.mp4");
+            const result = ffmpeg.FS("readFile", "output.mp4");
 
-            if (!generatedVideoData.length) throw new Error("The encoder produced an empty video.");
+            if (!result.length) throw new Error("The encoder produced an empty video.");
+            generatedVideoData = result;
             fileName = audioFile.name.replace(/\.[^/.]+$/, "") + "_video.mp4";
-            updateCount("POST");
+            saveBtn.textContent = "Save " + fileName;
+            window.recordConversion();
             progressBar.style.width = "100%";
             status.innerText = "Conversion complete!";
             saveBtn.style.display = "inline-block";
@@ -285,6 +281,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             if (!signal.aborted) {
                 activeJob = null;
                 showBusy(false);
+                if (generatedVideoData) saveBtn.style.display = "inline-block";
             }
         }
     });
@@ -295,6 +292,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         activeJob.stopEncoder();
         activeJob = null;
         showBusy(false);
+        if (generatedVideoData) saveBtn.style.display = "inline-block";
         status.textContent = "Canceled.";
     });
 
